@@ -152,6 +152,11 @@ export interface HandlerOption {
 	 */
 	maxZoom?: number;
 	/**
+	 * Zoom ratio step
+	 * @type {number}
+	 */
+	zoomStep?: number;
+	/**
 	 * Workarea option
 	 * @type {WorkareaOption}
 	 */
@@ -226,6 +231,7 @@ class Handler implements HandlerOptions {
 	public interactionMode: InteractionMode;
 	public minZoom: number;
 	public maxZoom: number;
+	public zoomStep: number = 0.05;
 	public propertiesToInclude?: string[] = defaults.propertiesToInclude;
 	public workareaOption?: WorkareaOption = defaults.workareaOption;
 	public canvasOption?: CanvasOption = defaults.canvasOption;
@@ -323,6 +329,7 @@ class Handler implements HandlerOptions {
 		this.interactionMode = options.interactionMode;
 		this.minZoom = options.minZoom;
 		this.maxZoom = options.maxZoom;
+		this.zoomStep = options.zoomStep || 0.05;
 		this.zoomEnabled = options.zoomEnabled;
 		this.width = options.width;
 		this.height = options.height;
@@ -370,7 +377,7 @@ class Handler implements HandlerOptions {
 		this.animationHandler = new AnimationHandler(this);
 		this.contextmenuHandler = new ContextmenuHandler(this);
 		this.tooltipHandler = new TooltipHandler(this);
-		this.zoomHandler = new ZoomHandler(this);
+		this.zoomHandler = new ZoomHandler(this, this.zoomStep);
 		this.interactionHandler = new InteractionHandler(this);
 		this.transactionHandler = new TransactionHandler(this);
 		this.gridHandler = new GridHandler(this);
@@ -640,6 +647,7 @@ class Handler implements HandlerOptions {
 				resolve(
 					obj.setSrc(source, () => this.canvas.renderAll(), {
 						dirty: true,
+						crossOrigin: 'anonymous',
 					}) as FabricImage,
 				);
 			}
@@ -1796,9 +1804,13 @@ class Handler implements HandlerOptions {
 	public saveCanvasImage = (option = { name: 'New Image', format: 'png', quality: 1 }) => {
 		// If it's zoomed out/in, the container will also include in the image
 		// hence need to reset the zoom level.
-		this.zoomHandler.zoomOneToOne();
-
-		const { left, top, width, height } = this.workarea;
+		let { left, top, width, height, scaleX, scaleY } = this.workarea;
+		width = Math.ceil(width * scaleX);
+		height = Math.ceil(height * scaleY);
+		// cachedVT is used to reset the viewportTransform after the image is saved.
+		const cachedVT = this.canvas.viewportTransform;
+		// reset the viewportTransform to default (no zoom)
+		this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
 		const dataUrl = this.canvas.toDataURL({
 			...option,
 			left,
@@ -1816,6 +1828,8 @@ class Handler implements HandlerOptions {
 			anchorEl.click();
 			anchorEl.remove();
 		}
+		// reset the viewportTransform to previous value.
+		this.canvas.viewportTransform = cachedVT;
 	};
 
 	/**
